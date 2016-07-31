@@ -1220,6 +1220,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         return null;
     }
 
+
     private void interceptPowerKeyUp(KeyEvent event, boolean interactive, boolean canceled) {
         final boolean handled = canceled || mPowerKeyHandled;
         mScreenshotChordPowerKeyTriggered = false;
