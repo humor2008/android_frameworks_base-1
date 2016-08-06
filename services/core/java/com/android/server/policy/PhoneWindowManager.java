@@ -1220,6 +1220,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         return null;
     }
 
+
     private void interceptPowerKeyUp(KeyEvent event, boolean interactive, boolean canceled) {
         final boolean handled = canceled || mPowerKeyHandled;
         mScreenshotChordPowerKeyTriggered = false;
@@ -2538,6 +2539,12 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                 && (attrs.flags & FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) != 0) {
             attrs.subtreeSystemUiVisibility |= View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+        }
+
+        if ((attrs.privateFlags & (WindowManager.LayoutParams.PRIVATE_FLAG_PREVENT_SYSTEM_KEYS |
+                            WindowManager.LayoutParams.PRIVATE_FLAG_PREVENT_POWER_KEY)) != 0) {
+            mContext.enforceCallingOrSelfPermission(android.Manifest.permission.PREVENT_SYSTEM_KEYS,
+                    "No permission to prevent system key");
         }
     }
 
