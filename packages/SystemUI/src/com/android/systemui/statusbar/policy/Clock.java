@@ -95,8 +95,8 @@ public class Clock extends TextView implements DemoMode {
 
             ContentResolver resolver = getContext().getContentResolver();
             resolver.registerContentObserver(Settings.System
-					.getUriFor(Settings.System.CLOCK_USE_SECOND), false,
-					this, UserHandle.USER_ALL);
+		    .getUriFor(Settings.System.CLOCK_USE_SECOND), false,
+		    this, UserHandle.USER_ALL);
             resolver.registerContentObserver(Settings.System
                     .getUriFor(Settings.System.STATUS_BAR_DATE), false,
                     this, UserHandle.USER_ALL);
