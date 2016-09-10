@@ -22,8 +22,8 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.res.TypedArray;
 import android.database.ContentObserver;
+import android.content.res.TypedArray;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.UserHandle;
@@ -41,13 +41,13 @@ import com.android.systemui.R;
 import com.android.systemui.cm.UserContentObserver;
 
 import java.text.SimpleDateFormat;
+import java.util.GregorianCalendar;
 import java.util.Calendar;
 import java.util.Date;
-import java.util.GregorianCalendar;
 import java.util.Locale;
+import java.util.TimeZone;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.TimeZone;
 
 import libcore.icu.LocaleData;
 
@@ -56,6 +56,7 @@ import libcore.icu.LocaleData;
  */
 public class Clock extends TextView implements DemoMode {
     private boolean mAttached;
+    private SettingsObserver settingsObserver;
     private Calendar mCalendar;
     private String mClockFormatString;
     private SimpleDateFormat mClockFormat;
@@ -78,15 +79,24 @@ public class Clock extends TextView implements DemoMode {
     protected int mClockDateDisplay = CLOCK_DATE_DISPLAY_GONE;
     protected int mClockDateStyle = CLOCK_DATE_STYLE_REGULAR;
 
-    private SettingsObserver mSettingsObserver;
+    private final Handler handler = new Handler();
+    TimerTask second;
+    Timer timer;
+    boolean timeSecond = false;
 
-    protected class SettingsObserver extends ContentObserver {
+    class SettingsObserver extends UserContentObserver {
         SettingsObserver(Handler handler) {
             super(handler);
         }
 
-        void observe() {
-            ContentResolver resolver = mContext.getContentResolver();
+        @Override
+        protected void observe() {
+            super.observe();
+
+            ContentResolver resolver = getContext().getContentResolver();
+            resolver.registerContentObserver(Settings.System
+		    .getUriFor(Settings.System.CLOCK_USE_SECOND), false,
+		    this, UserHandle.USER_ALL);
             resolver.registerContentObserver(Settings.System
                     .getUriFor(Settings.System.STATUS_BAR_DATE), false,
                     this, UserHandle.USER_ALL);
@@ -100,13 +110,17 @@ public class Clock extends TextView implements DemoMode {
         }
 
         @Override
-        public void onChange(boolean selfChange) {
+        protected void unobserve() {
+            super.unobserve();
+
+            getContext().getContentResolver().unregisterContentObserver(this);
+        }
+
+        @Override
+        public void update() {
             updateSettings();
         }
     }
-
-    private final Handler handler = new Handler();
-    TimerTask second;
 
     public Clock(Context context) {
         this(context, null);
@@ -144,11 +158,14 @@ public class Clock extends TextView implements DemoMode {
         // The time zone may have changed while the receiver wasn't registered, so update the Time
         mCalendar = Calendar.getInstance(TimeZone.getDefault());
 
-        if (mSettingsObserver == null) {
-            mSettingsObserver = new SettingsObserver(new Handler());
+        // Make sure we update to the current time
+        if (settingsObserver == null) {
+            settingsObserver = new SettingsObserver(new Handler());
+            settingsObserver.observe();
+        	updateSettings();
+        } else {
+            updateClock();
         }
-        mSettingsObserver.observe();
-        updateSettings();
     }
 
     @Override
@@ -156,7 +173,6 @@ public class Clock extends TextView implements DemoMode {
         super.onDetachedFromWindow();
         if (mAttached) {
             getContext().unregisterReceiver(mIntentReceiver);
-            getContext().getContentResolver().unregisterContentObserver(mSettingsObserver);
             mAttached = false;
         }
     }
@@ -199,14 +215,6 @@ public class Clock extends TextView implements DemoMode {
 
         SimpleDateFormat sdf;
         String format = is24 ? d.timeFormat_Hm : d.timeFormat_hm;
-
-        // replace seconds directly in format, not in result
-        if (Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.CLOCK_USE_SECOND, 0) == 1) {
-            String temp = format;
-            format = temp.replaceFirst("mm","mm:ss");
-        }
-
         if (!format.equals(mClockFormatString)) {
             /*
              * Search for an unquoted "a" in the format string, so we can
@@ -244,9 +252,14 @@ public class Clock extends TextView implements DemoMode {
             sdf = mClockFormat;
         }
 
-       CharSequence dateString = null;
+        CharSequence dateString = null;
 
         String result = is24 ? sdf.format(mCalendar.getTime()) : DateFormat.format(format, mCalendar.getTime()).toString();
+
+        if (timeSecond) {
+            String temp = result;
+            result = String.format("%s:%02d", temp, new GregorianCalendar().get(Calendar.SECOND));
+        }
 
         if (mClockDateDisplay != CLOCK_DATE_DISPLAY_GONE) {
             Date now = new Date();
@@ -286,6 +299,7 @@ public class Clock extends TextView implements DemoMode {
                 }
             }
         }
+
         if (mAmPmStyle != AM_PM_STYLE_NORMAL) {
             int magic1 = result.indexOf(MAGIC1);
             int magic2 = result.indexOf(MAGIC2);
@@ -301,14 +315,18 @@ public class Clock extends TextView implements DemoMode {
                     formatted.delete(magic2, magic2 + 1);
                     formatted.delete(magic1, magic1 + 1);
                 }
+                return formatted;
             }
         }
-        return formatted;
+
+        return result;
+
     }
 
-    protected void updateSettings() {
+    private boolean mDemoMode;
+    void updateSettings() {
         ContentResolver resolver = mContext.getContentResolver();
-
+ 
         mClockFormatString = "";
 
         mClockDateDisplay = Settings.System.getIntForUser(resolver,
@@ -318,7 +336,14 @@ public class Clock extends TextView implements DemoMode {
                 Settings.System.STATUS_BAR_DATE_STYLE, CLOCK_DATE_STYLE_REGULAR,
                 UserHandle.USER_CURRENT);
 
+        timeSecond = Settings.System.getInt(getContext().getContentResolver(), Settings.System.CLOCK_USE_SECOND, 0) == 1;
+        timer = null;
+        second = null;
+        if(!timeSecond)
+            return;
+        timer = new Timer();
         second = new TimerTask()
+
         {
             @Override
             public void run()
@@ -327,18 +352,15 @@ public class Clock extends TextView implements DemoMode {
                   {
                    public void run()
                    {
-        				updateClock();
+                       updateClock();
                    }
                   };
                 handler.post(updater);
              }
         };
-        Timer timer = new Timer();
         timer.schedule(second, 0, 1001);
-
+        updateClock();
     }
-
-    private boolean mDemoMode;
 
     @Override
     public void dispatchDemoCommand(String command, Bundle args) {

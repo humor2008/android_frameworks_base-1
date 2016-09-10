@@ -29,6 +29,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.CompatibilityInfo;
 import android.content.res.Configuration;
@@ -65,6 +66,7 @@ import android.os.SystemProperties;
 import android.os.SystemService;
 import android.os.Trace;
 import android.os.UserHandle;
+import android.os.UserManager;
 import android.os.WorkSource;
 import android.provider.Settings;
 import android.util.ArraySet;
@@ -5959,13 +5961,18 @@ public class WindowManagerService extends IWindowManager.Stub
         return true;
     }
 
-    public void showBootMessage(final CharSequence msg, final boolean always) {
+    public void updateBootProgress(final int stage, final ApplicationInfo optimizedApp,
+            final int currentAppPos, final int totalAppCount, final boolean always) {
         boolean first = false;
         synchronized(mWindowMap) {
             if (DEBUG_BOOT) {
                 RuntimeException here = new RuntimeException("here");
                 here.fillInStackTrace();
-                Slog.i(TAG, "showBootMessage: msg=" + msg + " always=" + always
+                Slog.i(TAG, "updateBootProgress: stage=" + stage
+                        + " optimizedApp=" + optimizedApp
+                        + " currentAppPos=" + currentAppPos
+                        + " totalAppCount=" + totalAppCount
+                        + " always=" + always
                         + " mAllowBootMessages=" + mAllowBootMessages
                         + " mShowingBootMessages=" + mShowingBootMessages
                         + " mSystemBooted=" + mSystemBooted, here);
@@ -5983,7 +5990,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 return;
             }
             mShowingBootMessages = true;
-            mPolicy.showBootMessage(msg, always);
+            mPolicy.updateBootProgress(stage, optimizedApp, currentAppPos, totalAppCount);
         }
         if (first) {
             performEnableScreen();
@@ -7679,6 +7686,12 @@ public class WindowManagerService extends IWindowManager.Stub
             Slog.w(TAG, "Devices still not ready after waiting "
                    + INPUT_DEVICES_READY_FOR_SAFE_MODE_DETECTION_TIMEOUT_MILLIS
                    + " milliseconds before attempting to detect safe mode.");
+        }
+
+        UserManager um = (UserManager) mContext.getSystemService(Context.USER_SERVICE);
+        if (um != null && um.hasUserRestriction(UserManager.DISALLOW_SAFE_BOOT)) {
+            mSafeMode = false;
+            return false;
         }
 
         int menuState = mInputManager.getKeyCodeState(-1, InputDevice.SOURCE_ANY,
